@@ -30,6 +30,12 @@ func newEncoder() (e *encoder) {
 	return e
 }
 
+func newEncoderWithIndent(indent int) (e *encoder) {
+	e = newEncoder()
+	e.emitter.best_indent = indent
+	return e
+}
+
 func (e *encoder) finish() {
 	e.must(yaml_document_end_event_initialize(&e.event, true))
 	e.emit()
