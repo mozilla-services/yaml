@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mozilla.org/yaml.v2"
+	"github.com/mozilla-services/yaml"
 	. "gopkg.in/check.v1"
 )
 

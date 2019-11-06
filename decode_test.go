@@ -2,13 +2,14 @@ package yaml_test
 
 import (
 	"errors"
-	"go.mozilla.org/yaml.v2"
-	. "gopkg.in/check.v1"
 	"math"
 	"net"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/mozilla-services/yaml"
+	. "gopkg.in/check.v1"
 )
 
 var unmarshalIntTest = 123
