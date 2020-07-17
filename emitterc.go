@@ -603,13 +603,19 @@ func yaml_emitter_emit_block_sequence_item(emitter *yaml_emitter_t, event *yaml_
 
 // Expect a block key node.
 func yaml_emitter_emit_block_mapping_key(emitter *yaml_emitter_t, event *yaml_event_t, first bool) bool {
-	if event.typ == yaml_COMMENT_EVENT {
-		return yaml_emitter_emit_comment(emitter, event)
-	}
 	if first {
 		if !yaml_emitter_increase_indent(emitter, false, false) {
 			return false
 		}
+	}
+
+	if event.typ == yaml_COMMENT_EVENT {
+		if first {
+			// Reset the state to not be the first key in the map,
+			// so we don't indent again
+			emitter.state = yaml_EMIT_BLOCK_MAPPING_KEY_STATE
+		}
+		return yaml_emitter_emit_comment(emitter, event)
 	}
 
 	if event.typ == yaml_MAPPING_END_EVENT {
@@ -696,7 +702,10 @@ func yaml_emitter_emit_comment(emitter *yaml_emitter_t, event *yaml_event_t) boo
 	}
 	out := []byte{'#'}
 	out = append(out, event.value...)
-	return write_all(emitter, out)
+	if !write_all(emitter, out) {
+		return false
+	}
+	return put_break(emitter)
 }
 
 // Expect SCALAR.
