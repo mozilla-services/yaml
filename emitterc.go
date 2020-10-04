@@ -589,6 +589,11 @@ func yaml_emitter_emit_block_sequence_item(emitter *yaml_emitter_t, event *yaml_
 		return true
 	}
 	if event.typ == yaml_COMMENT_EVENT {
+		if first {
+			// Reset the state to not be the first entry in the sequence,
+			// so we don't indent again
+			emitter.state = yaml_EMIT_BLOCK_SEQUENCE_ITEM_STATE
+		}
 		return yaml_emitter_emit_comment(emitter, event)
 	}
 	if !yaml_emitter_write_indent(emitter) {

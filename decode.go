@@ -240,7 +240,7 @@ func (d *decoder) callUnmarshaler(n *node, u Unmarshaler) (good bool) {
 	terrlen := len(d.terrors)
 	err := u.UnmarshalYAML(func(v interface{}) (err error) {
 		defer handleErr(&err)
-		d.unmarshal(n, reflect.ValueOf(v))
+		d.unmarshal(n, reflect.ValueOf(v), nil)
 		if len(d.terrors) > terrlen {
 			issues := d.terrors[terrlen:]
 			d.terrors = d.terrors[:terrlen]
@@ -289,16 +289,16 @@ func (d *decoder) prepare(n *node, out reflect.Value) (newout reflect.Value, unm
 	return out, false, false
 }
 
-func (d *decoder) unmarshal(n *node, out reflect.Value) (good bool) {
+func (d *decoder) unmarshal(n *node, out reflect.Value, tmpSlice []MapItem) (good_ bool, tmpSlice_ []MapItem) {
 	switch n.kind {
 	case documentNode:
-		return d.document(n, out)
+		return d.document(n, out), tmpSlice
 	case aliasNode:
-		return d.alias(n, out)
+		return d.alias(n, out), tmpSlice
 	}
 	out, unmarshaled, good := d.prepare(n, out)
 	if unmarshaled {
-		return good
+		return good, tmpSlice
 	}
 	switch n.kind {
 	case scalarNode:
@@ -306,19 +306,19 @@ func (d *decoder) unmarshal(n *node, out reflect.Value) (good bool) {
 	case commentNode:
 		good = d.comment(n, out)
 	case mappingNode:
-		good = d.mapping(n, out)
+		good, tmpSlice = d.mapping(n, out, tmpSlice)
 	case sequenceNode:
-		good = d.sequence(n, out)
+		good, tmpSlice = d.sequence(n, out, tmpSlice)
 	default:
 		panic("internal error: unknown node kind: " + strconv.Itoa(n.kind))
 	}
-	return good
+	return good, tmpSlice
 }
 
 func (d *decoder) document(n *node, out reflect.Value) (good bool) {
 	if len(n.children) == 1 {
 		d.doc = n
-		d.unmarshal(n.children[0], out)
+		d.unmarshal(n.children[0], out, nil)
 		return true
 	}
 	return false
@@ -333,7 +333,7 @@ func (d *decoder) alias(n *node, out reflect.Value) (good bool) {
 		failf("anchor '%s' value contains itself", n.value)
 	}
 	d.aliases[n.value] = true
-	good = d.unmarshal(an, out)
+	good, _ = d.unmarshal(an, out, nil)
 	delete(d.aliases, n.value)
 	return good
 }
@@ -506,8 +506,9 @@ func settableValueOf(i interface{}) reflect.Value {
 	return sv
 }
 
-func (d *decoder) sequence(n *node, out reflect.Value) (good bool) {
-	l := len(n.children)
+func (d *decoder) sequence(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
+	sl := len(n.children)
+	l := sl + len(tmpSlice)
 
 	var iface reflect.Value
 	switch out.Kind() {
@@ -519,13 +520,23 @@ func (d *decoder) sequence(n *node, out reflect.Value) (good bool) {
 		out = settableValueOf(make([]interface{}, l))
 	default:
 		d.terror(n, yaml_SEQ_TAG, out)
-		return false
+		return false, nil
 	}
 	et := out.Type().Elem()
 	j := 0
-	for i := 0; i < l; i++ {
+	if len(tmpSlice) > 0 {
+		for _, tmpSliceElt := range tmpSlice {
+			e := reflect.New(et).Elem()
+			e.Set(reflect.ValueOf(tmpSliceElt.Key))
+			out.Index(j).Set(e)
+			j++
+		}
+		tmpSlice = nil
+	}
+
+	for i := 0; i < sl; i++ {
 		e := reflect.New(et).Elem()
-		if ok := d.unmarshal(n.children[i], e); ok {
+		if ok, _ := d.unmarshal(n.children[i], e, nil); ok {
 			out.Index(j).Set(e)
 			j++
 		}
@@ -534,15 +545,15 @@ func (d *decoder) sequence(n *node, out reflect.Value) (good bool) {
 	if iface.IsValid() {
 		iface.Set(out)
 	}
-	return true
+	return true, tmpSlice
 }
 
-func (d *decoder) mapping(n *node, out reflect.Value) (good bool) {
+func (d *decoder) mapping(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
 	switch out.Kind() {
 	case reflect.Struct:
-		return d.mappingStruct(n, out)
+		return d.mappingStruct(n, out, tmpSlice)
 	case reflect.Slice:
-		return d.mappingSlice(n, out)
+		return d.mappingSlice(n, out, tmpSlice)
 	case reflect.Map:
 		// okay
 	case reflect.Interface:
@@ -552,15 +563,16 @@ func (d *decoder) mapping(n *node, out reflect.Value) (good bool) {
 			iface.Set(out)
 		} else {
 			slicev := reflect.New(d.mapType).Elem()
-			if !d.mappingSlice(n, slicev) {
-				return false
+			var ok bool
+			if ok, tmpSlice = d.mappingSlice(n, slicev, tmpSlice); !ok {
+				return false, tmpSlice
 			}
 			out.Set(slicev)
-			return true
+			return true, tmpSlice
 		}
 	default:
 		d.terror(n, yaml_MAP_TAG, out)
-		return false
+		return false, nil
 	}
 	outt := out.Type()
 	kt := outt.Key()
@@ -596,7 +608,7 @@ func (d *decoder) mapping(n *node, out reflect.Value) (good bool) {
 					continue
 				}
 				k := reflect.New(kt).Elem()
-				if d.unmarshal(key, k) {
+				if good, _ := d.unmarshal(key, k, nil); good {
 					kkind := k.Kind()
 					if kkind == reflect.Interface {
 						kkind = k.Elem().Kind()
@@ -605,7 +617,7 @@ func (d *decoder) mapping(n *node, out reflect.Value) (good bool) {
 						failf("invalid map key: %#v", k.Interface())
 					}
 					e := reflect.New(et).Elem()
-					if d.unmarshal(value, e) {
+					if good, _ := d.unmarshal(value, e, nil); good {
 						out.SetMapIndex(k, e)
 					}
 				}
@@ -613,32 +625,41 @@ func (d *decoder) mapping(n *node, out reflect.Value) (good bool) {
 		}
 	}
 	d.mapType = mapType
-	return true
+	return true, tmpSlice
 }
 
-func (d *decoder) mappingSlice(n *node, out reflect.Value) (good bool) {
+func (d *decoder) mappingSlice(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
 	outt := out.Type()
 	if outt.Elem() != mapItemType {
 		d.terror(n, yaml_MAP_TAG, out)
-		return false
+		return false, nil
 	}
 
 	mapType := d.mapType
 	d.mapType = outt
 
 	var slice []MapItem
+	if len(tmpSlice) > 0 {
+		slice = append(slice, tmpSlice...)
+		tmpSlice = nil
+	}
 
 	var key *node
 	var value *node
 	var keySet bool
 	for _, child := range n.children {
 		if child.kind == commentNode {
-			slice = append(slice, MapItem{
+			cmt := MapItem{
 				Key: Comment{
 					Value: child.value,
 				},
 				Value: nil,
-			})
+			}
+			if keySet {
+				tmpSlice = append(tmpSlice, cmt)
+			} else {
+				slice = append(slice, cmt)
+			}
 		} else {
 			if !keySet {
 				keySet = true
@@ -652,21 +673,29 @@ func (d *decoder) mappingSlice(n *node, out reflect.Value) (good bool) {
 				}
 				item := MapItem{}
 				k := reflect.ValueOf(&item.Key).Elem()
-				if d.unmarshal(key, k) {
+				if good, _ := d.unmarshal(key, k, nil); good {
 					v := reflect.ValueOf(&item.Value).Elem()
-					if d.unmarshal(value, v) {
+					if good, tmpSlice = d.unmarshal(value, v, tmpSlice); good {
 						slice = append(slice, item)
+						if len(tmpSlice) > 0 {
+							slice = append(slice, tmpSlice...)
+							tmpSlice = nil
+						}
 					}
 				}
 			}
 		}
 	}
+	if len(tmpSlice) > 0 {
+		slice = append(slice, tmpSlice...)
+		tmpSlice = nil
+	}
 	out.Set(reflect.ValueOf(slice))
 	d.mapType = mapType
-	return true
+	return true, tmpSlice
 }
 
-func (d *decoder) mappingStruct(n *node, out reflect.Value) (good bool) {
+func (d *decoder) mappingStruct(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
 	sinfo, err := getStructInfo(out.Type())
 	if err != nil {
 		panic(err)
@@ -688,7 +717,7 @@ func (d *decoder) mappingStruct(n *node, out reflect.Value) (good bool) {
 			d.merge(n.children[i+1], out)
 			continue
 		}
-		if !d.unmarshal(ni, name) {
+		if good, _ := d.unmarshal(ni, name, nil); !good {
 			continue
 		}
 		if info, ok := sinfo.FieldsMap[name.String()]; ok {
@@ -698,17 +727,17 @@ func (d *decoder) mappingStruct(n *node, out reflect.Value) (good bool) {
 			} else {
 				field = out.FieldByIndex(info.Inline)
 			}
-			d.unmarshal(n.children[i+1], field)
+			d.unmarshal(n.children[i+1], field, nil)
 		} else if sinfo.InlineMap != -1 {
 			if inlineMap.IsNil() {
 				inlineMap.Set(reflect.MakeMap(inlineMap.Type()))
 			}
 			value := reflect.New(elemType).Elem()
-			d.unmarshal(n.children[i+1], value)
+			d.unmarshal(n.children[i+1], value, nil)
 			inlineMap.SetMapIndex(name, value)
 		}
 	}
-	return true
+	return true, tmpSlice
 }
 
 func failWantMap() {
@@ -718,13 +747,13 @@ func failWantMap() {
 func (d *decoder) merge(n *node, out reflect.Value) {
 	switch n.kind {
 	case mappingNode:
-		d.unmarshal(n, out)
+		d.unmarshal(n, out, nil)
 	case aliasNode:
 		an, ok := d.doc.anchors[n.value]
 		if ok && an.kind != mappingNode {
 			failWantMap()
 		}
-		d.unmarshal(n, out)
+		d.unmarshal(n, out, nil)
 	case sequenceNode:
 		// Step backwards as earlier nodes take precedence.
 		for i := len(n.children) - 1; i >= 0; i-- {
@@ -737,7 +766,7 @@ func (d *decoder) merge(n *node, out reflect.Value) {
 			} else if ni.kind != mappingNode {
 				failWantMap()
 			}
-			d.unmarshal(ni, out)
+			d.unmarshal(ni, out, nil)
 		}
 	default:
 		failWantMap()

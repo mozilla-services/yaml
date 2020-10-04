@@ -56,7 +56,7 @@ func (u CommentUnmarshaler) Unmarshal(in []byte, out interface{}) (err error) {
 		if v.Kind() == reflect.Ptr && !v.IsNil() {
 			v = v.Elem()
 		}
-		d.unmarshal(node, v)
+		d.unmarshal(node, v, nil)
 	}
 	if len(d.terrors) > 0 {
 		return &TypeError{d.terrors}
@@ -91,7 +91,7 @@ func unmarshalDocuments(in []byte, out interface{}, withComments bool) (err erro
 			if v.Kind() == reflect.Ptr && !v.IsNil() {
 				v = v.Elem()
 			}
-			d.unmarshal(node, v)
+			d.unmarshal(node, v, nil)
 			sv.Set(reflect.Append(sv, v))
 		}
 		if len(d.terrors) > 0 {
@@ -152,7 +152,7 @@ func Unmarshal(in []byte, out interface{}) (err error) {
 		if v.Kind() == reflect.Ptr && !v.IsNil() {
 			v = v.Elem()
 		}
-		d.unmarshal(node, v)
+		d.unmarshal(node, v, nil)
 	}
 	if len(d.terrors) > 0 {
 		return &TypeError{d.terrors}
