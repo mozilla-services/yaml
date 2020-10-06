@@ -289,6 +289,22 @@ func (d *decoder) prepare(n *node, out reflect.Value) (newout reflect.Value, unm
 	return out, false, false
 }
 
+// Here and in the following, prependComments is a slice of comments marshaled
+// as MapItems which should be prepended to the next map or sequence.
+//
+// This is because an input YAML such as
+//
+//     a:
+//        # comment
+//        b: c
+//
+// will result in the comment event being emitted before the map start event,
+// which would otherwise cause the comment to be moved before the `a:`, or if
+// evaluated differently, after the end of the `a:` map. In any case, the comment
+// would be placed very wrongly. Now, the comment will be put into prependComments
+// after receiving the event for `a`, and before the map start event, and end up
+// as the first element in the unmarshaled map.
+
 func (d *decoder) unmarshal(n *node, out reflect.Value, prependComments []MapItem) (good_ bool, prependComments_ []MapItem) {
 	switch n.kind {
 	case documentNode:
