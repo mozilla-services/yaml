@@ -289,16 +289,16 @@ func (d *decoder) prepare(n *node, out reflect.Value) (newout reflect.Value, unm
 	return out, false, false
 }
 
-func (d *decoder) unmarshal(n *node, out reflect.Value, tmpSlice []MapItem) (good_ bool, tmpSlice_ []MapItem) {
+func (d *decoder) unmarshal(n *node, out reflect.Value, prependComments []MapItem) (good_ bool, prependComments_ []MapItem) {
 	switch n.kind {
 	case documentNode:
-		return d.document(n, out), tmpSlice
+		return d.document(n, out), prependComments
 	case aliasNode:
-		return d.alias(n, out), tmpSlice
+		return d.alias(n, out), prependComments
 	}
 	out, unmarshaled, good := d.prepare(n, out)
 	if unmarshaled {
-		return good, tmpSlice
+		return good, prependComments
 	}
 	switch n.kind {
 	case scalarNode:
@@ -306,13 +306,13 @@ func (d *decoder) unmarshal(n *node, out reflect.Value, tmpSlice []MapItem) (goo
 	case commentNode:
 		good = d.comment(n, out)
 	case mappingNode:
-		good, tmpSlice = d.mapping(n, out, tmpSlice)
+		good, prependComments = d.mapping(n, out, prependComments)
 	case sequenceNode:
-		good, tmpSlice = d.sequence(n, out, tmpSlice)
+		good, prependComments = d.sequence(n, out, prependComments)
 	default:
 		panic("internal error: unknown node kind: " + strconv.Itoa(n.kind))
 	}
-	return good, tmpSlice
+	return good, prependComments
 }
 
 func (d *decoder) document(n *node, out reflect.Value) (good bool) {
@@ -506,9 +506,9 @@ func settableValueOf(i interface{}) reflect.Value {
 	return sv
 }
 
-func (d *decoder) sequence(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
+func (d *decoder) sequence(n *node, out reflect.Value, prependComments []MapItem) (good bool, prependComments_ []MapItem) {
 	sl := len(n.children)
-	l := sl + len(tmpSlice)
+	l := sl + len(prependComments)
 
 	var iface reflect.Value
 	switch out.Kind() {
@@ -524,14 +524,14 @@ func (d *decoder) sequence(n *node, out reflect.Value, tmpSlice []MapItem) (good
 	}
 	et := out.Type().Elem()
 	j := 0
-	if len(tmpSlice) > 0 {
-		for _, tmpSliceElt := range tmpSlice {
+	if len(prependComments) > 0 {
+		for _, prependCommentsElt := range prependComments {
 			e := reflect.New(et).Elem()
-			e.Set(reflect.ValueOf(tmpSliceElt.Key))
+			e.Set(reflect.ValueOf(prependCommentsElt.Key))
 			out.Index(j).Set(e)
 			j++
 		}
-		tmpSlice = nil
+		prependComments = nil
 	}
 
 	for i := 0; i < sl; i++ {
@@ -545,15 +545,15 @@ func (d *decoder) sequence(n *node, out reflect.Value, tmpSlice []MapItem) (good
 	if iface.IsValid() {
 		iface.Set(out)
 	}
-	return true, tmpSlice
+	return true, prependComments
 }
 
-func (d *decoder) mapping(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
+func (d *decoder) mapping(n *node, out reflect.Value, prependComments []MapItem) (good bool, prependComments_ []MapItem) {
 	switch out.Kind() {
 	case reflect.Struct:
-		return d.mappingStruct(n, out, tmpSlice)
+		return d.mappingStruct(n, out, prependComments)
 	case reflect.Slice:
-		return d.mappingSlice(n, out, tmpSlice)
+		return d.mappingSlice(n, out, prependComments)
 	case reflect.Map:
 		// okay
 	case reflect.Interface:
@@ -564,11 +564,11 @@ func (d *decoder) mapping(n *node, out reflect.Value, tmpSlice []MapItem) (good 
 		} else {
 			slicev := reflect.New(d.mapType).Elem()
 			var ok bool
-			if ok, tmpSlice = d.mappingSlice(n, slicev, tmpSlice); !ok {
-				return false, tmpSlice
+			if ok, prependComments = d.mappingSlice(n, slicev, prependComments); !ok {
+				return false, prependComments
 			}
 			out.Set(slicev)
-			return true, tmpSlice
+			return true, prependComments
 		}
 	default:
 		d.terror(n, yaml_MAP_TAG, out)
@@ -625,10 +625,10 @@ func (d *decoder) mapping(n *node, out reflect.Value, tmpSlice []MapItem) (good 
 		}
 	}
 	d.mapType = mapType
-	return true, tmpSlice
+	return true, prependComments
 }
 
-func (d *decoder) mappingSlice(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
+func (d *decoder) mappingSlice(n *node, out reflect.Value, prependComments []MapItem) (good bool, prependComments_ []MapItem) {
 	outt := out.Type()
 	if outt.Elem() != mapItemType {
 		d.terror(n, yaml_MAP_TAG, out)
@@ -639,9 +639,9 @@ func (d *decoder) mappingSlice(n *node, out reflect.Value, tmpSlice []MapItem) (
 	d.mapType = outt
 
 	var slice []MapItem
-	if len(tmpSlice) > 0 {
-		slice = append(slice, tmpSlice...)
-		tmpSlice = nil
+	if len(prependComments) > 0 {
+		slice = append(slice, prependComments...)
+		prependComments = nil
 	}
 
 	var key *node
@@ -656,7 +656,7 @@ func (d *decoder) mappingSlice(n *node, out reflect.Value, tmpSlice []MapItem) (
 				Value: nil,
 			}
 			if keySet {
-				tmpSlice = append(tmpSlice, cmt)
+				prependComments = append(prependComments, cmt)
 			} else {
 				slice = append(slice, cmt)
 			}
@@ -675,27 +675,27 @@ func (d *decoder) mappingSlice(n *node, out reflect.Value, tmpSlice []MapItem) (
 				k := reflect.ValueOf(&item.Key).Elem()
 				if good, _ := d.unmarshal(key, k, nil); good {
 					v := reflect.ValueOf(&item.Value).Elem()
-					if good, tmpSlice = d.unmarshal(value, v, tmpSlice); good {
+					if good, prependComments = d.unmarshal(value, v, prependComments); good {
 						slice = append(slice, item)
-						if len(tmpSlice) > 0 {
-							slice = append(slice, tmpSlice...)
-							tmpSlice = nil
+						if len(prependComments) > 0 {
+							slice = append(slice, prependComments...)
+							prependComments = nil
 						}
 					}
 				}
 			}
 		}
 	}
-	if len(tmpSlice) > 0 {
-		slice = append(slice, tmpSlice...)
-		tmpSlice = nil
+	if len(prependComments) > 0 {
+		slice = append(slice, prependComments...)
+		prependComments = nil
 	}
 	out.Set(reflect.ValueOf(slice))
 	d.mapType = mapType
-	return true, tmpSlice
+	return true, prependComments
 }
 
-func (d *decoder) mappingStruct(n *node, out reflect.Value, tmpSlice []MapItem) (good bool, tmpSlice_ []MapItem) {
+func (d *decoder) mappingStruct(n *node, out reflect.Value, prependComments []MapItem) (good bool, prependComments_ []MapItem) {
 	sinfo, err := getStructInfo(out.Type())
 	if err != nil {
 		panic(err)
@@ -737,7 +737,7 @@ func (d *decoder) mappingStruct(n *node, out reflect.Value, tmpSlice []MapItem) 
 			inlineMap.SetMapIndex(name, value)
 		}
 	}
-	return true, tmpSlice
+	return true, prependComments
 }
 
 func failWantMap() {
