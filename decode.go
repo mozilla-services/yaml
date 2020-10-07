@@ -140,7 +140,6 @@ func (p *parser) document() *node {
 	p.doc = n
 	p.skip()
 	next := p.parse()
-	// Chomp all comments, as they can't be part of the top-level YAML structure
 	for next.kind == commentNode {
 		n.children = append(n.children, next)
 		next = p.parse()
