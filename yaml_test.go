@@ -7,6 +7,7 @@ import (
 
 
 var COMMENT_1_IN = []byte(`---
+# begin
 a:
  # foo
  # bar
@@ -29,6 +30,12 @@ d:
 `)
 var COMMENT_1_TREE = []yaml.MapSlice{
 	yaml.MapSlice{
+		yaml.MapItem{
+			Key:   yaml.Comment{
+				Value: " begin",
+			},
+			Value: nil,
+		},
 		yaml.MapItem{
 			Key:   "a",
 			Value: yaml.MapSlice{
@@ -107,7 +114,8 @@ var COMMENT_1_TREE = []yaml.MapSlice{
 		},
 	},
 }
-var COMMENT_1_OUT = []byte(`a:
+var COMMENT_1_OUT = []byte(`# begin
+a:
   # foo
   # bar
   b: null
