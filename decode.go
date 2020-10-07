@@ -140,8 +140,8 @@ func (p *parser) document() *node {
 	p.doc = n
 	p.skip()
 	next := p.parse()
-	// Chomp all comments, as they can't be part of the top-level YAML structure
 	for next.kind == commentNode {
+		n.children = append(n.children, next)
 		next = p.parse()
 	}
 	n.children = append(n.children, next)
@@ -332,12 +332,25 @@ func (d *decoder) unmarshal(n *node, out reflect.Value, prependComments []MapIte
 }
 
 func (d *decoder) document(n *node, out reflect.Value) (good bool) {
-	if len(n.children) == 1 {
-		d.doc = n
-		d.unmarshal(n.children[0], out, nil)
-		return true
+	var prependComments []MapItem
+	var hasDocument bool
+	for _, node := range n.children {
+		if node.kind == commentNode {
+			prependComments = append(prependComments, MapItem{
+				Key: Comment{
+					Value: node.value,
+				},
+				Value: nil,
+			})
+		} else if (!hasDocument) {
+			d.doc = n
+			d.unmarshal(node, out, prependComments)
+			hasDocument = true
+		} else {
+			return false
+		}
 	}
-	return false
+	return hasDocument
 }
 
 func (d *decoder) alias(n *node, out reflect.Value) (good bool) {
