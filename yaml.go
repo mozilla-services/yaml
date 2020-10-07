@@ -47,8 +47,7 @@ type CommentUnmarshaler struct{}
 func (u CommentUnmarshaler) Unmarshal(in []byte, out interface{}) (err error) {
 	defer handleErr(&err)
 	d := newDecoder()
-	p := newParser(in)
-	p.parser.parse_comments = true
+	p := newParser(in, true)
 	defer p.destroy()
 	node := p.parse()
 	if node != nil {
@@ -81,10 +80,7 @@ func unmarshalDocuments(in []byte, out interface{}, withComments bool) (err erro
 	svt := sv.Type().Elem()
 	var p *parser
 	for {
-		p = newParser(in)
-		if withComments {
-			p.parser.parse_comments = true
-		}
+		p = newParser(in, withComments)
 		node := p.parse()
 		if node != nil {
 			v := reflect.New(svt).Elem()
@@ -144,7 +140,7 @@ func unmarshalDocuments(in []byte, out interface{}, withComments bool) (err erro
 func Unmarshal(in []byte, out interface{}) (err error) {
 	defer handleErr(&err)
 	d := newDecoder()
-	p := newParser(in)
+	p := newParser(in, false)
 	defer p.destroy()
 	node := p.parse()
 	if node != nil {

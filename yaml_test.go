@@ -136,7 +136,7 @@ d:
 # e
 `)
 
-var COMMENT_2_IN = []byte(`---
+var COMMENT_2_IN = []byte(`# beginning
 a:
     ## foo
     ##
@@ -144,6 +144,12 @@ a:
 `)
 var COMMENT_2_TREE = []yaml.MapSlice{
 	yaml.MapSlice{
+		yaml.MapItem{
+			Key:   yaml.Comment{
+				Value: " beginning",
+			},
+			Value: nil,
+		},
 		yaml.MapItem{
 			Key:   "a",
 			Value: yaml.MapSlice{
@@ -167,7 +173,8 @@ var COMMENT_2_TREE = []yaml.MapSlice{
 		},
 	},
 }
-var COMMENT_2_OUT = []byte(`a:
+var COMMENT_2_OUT = []byte(`# beginning
+a:
   ## foo
   ##
   b: null

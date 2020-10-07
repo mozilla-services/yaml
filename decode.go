@@ -38,11 +38,12 @@ type parser struct {
 	doc    *node
 }
 
-func newParser(b []byte) *parser {
+func newParser(b []byte, parse_comments bool) *parser {
 	p := parser{}
 	if !yaml_parser_initialize(&p.parser) {
 		panic("failed to initialize YAML emitter")
 	}
+	p.parser.parse_comments = parse_comments
 
 	if len(b) == 0 {
 		b = []byte{'\n'}
