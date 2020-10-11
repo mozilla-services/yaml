@@ -6,7 +6,7 @@ import (
 
 func yaml_parser_remaining_bytes(parser *yaml_parser_t) []byte {
 	if parser.unread > 0 {
-		offset := len(parser.buffer) - parser.unread
+		offset := parser.buffer_pos
 		if int(parser.buffer[offset]) == 0 {
 			return []byte{}
 		}
