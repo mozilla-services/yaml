@@ -180,6 +180,42 @@ a:
   b: null
 `)
 
+var COMMENT_3_IN = []byte(`hello: world
+---
+hello: world
+# ✅
+---
+hello: world
+`)
+var COMMENT_3_TREE = []yaml.MapSlice{
+	yaml.MapSlice{
+		yaml.MapItem{
+			Key:   "hello",
+			Value: "world",
+		},
+	},
+	yaml.MapSlice{
+		yaml.MapItem{
+			Key:   "hello",
+			Value: "world",
+		},
+		yaml.MapItem{
+			Key:   yaml.Comment{
+				Value: " ✅",
+			},
+			Value: nil,
+		},
+	},
+	yaml.MapSlice{
+		yaml.MapItem{
+			Key:   "hello",
+			Value: "world",
+		},
+	},
+}
+var COMMENT_3_OUT = []byte(`hello: world
+# ✅
+`)
 
 func (s *S) TestCommentMoving1(c *C) {
 	var data []yaml.MapSlice
@@ -200,4 +236,14 @@ func (s *S) TestCommentParsing(c *C) {
 	out, err := (&yaml.YAMLMarshaler{Indent: 2}).Marshal(data[0])
 	c.Assert(err, DeepEquals, nil)
 	c.Assert(out, DeepEquals, COMMENT_2_OUT)
+}
+
+func (s *S) TestCommentUnicode(c *C) {
+	var data []yaml.MapSlice
+	err := (yaml.CommentUnmarshaler{}).UnmarshalDocuments(COMMENT_3_IN, &data)
+	c.Assert(err, DeepEquals, nil)
+	c.Assert(data, DeepEquals, COMMENT_3_TREE)
+	out, err := (&yaml.YAMLMarshaler{Indent: 2}).Marshal(data[1])
+	c.Assert(err, DeepEquals, nil)
+	c.Assert(out, DeepEquals, COMMENT_3_OUT)
 }
